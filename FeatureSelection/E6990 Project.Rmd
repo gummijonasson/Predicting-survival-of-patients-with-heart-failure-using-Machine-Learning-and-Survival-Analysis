@@ -1,0 +1,204 @@
+---
+title: "E6690 Project"
+author: "Rufina Flora George Rajan"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#test project
+```{r}
+library(dplyr)
+library(caret)
+library(e1071)
+library(class)
+library(caret)
+library(mltools)
+library(PRROC)
+library(ggplot2)
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra) 
+#library(factoextra)
+```
+
+```{r}
+# Metric calculation function
+rates1 = function(preds, labels) {
+  
+  confusion_matrix = confusionMatrix(preds, labels)
+  
+  fg = preds[labels==1]
+  bg = preds[labels==0]
+  
+  pr_curve_test <- pr.curve(scores.class0 = fg, scores.class1 = bg, curve = F)
+  
+  prc_auc <- pr_curve_test$auc.integral
+  
+  roc_curve_test <- roc.curve(scores.class0 = fg, scores.class1 = bg, curve = F)
+  
+  roc_auc <- roc_curve_test$auc
+  
+  mcc = mcc(preds, labels) #https://www.rdocumentation.org/packages/mltools/versions/0.3.4/topics/mcc
+  f1 = confusion_matrix$byClass[7]
+  accuracy = confusion_matrix$overall[1]
+  tp_rate = confusion_matrix$byClass[1]
+  tn_rate = confusion_matrix$byClass[2]
+  
+  metrics = list(mcc, f1, accuracy, tp_rate, tn_rate, prc_auc, roc_auc)
+  
+  return(metrics)
+}
+```
+
+
+
+```{r cars}
+# Retrieving data set from UCI
+heart.uci <- read.csv(url("http://archive.ics.uci.edu//ml/machine-learning-databases/00519/heart_failure_clinical_records_dataset.csv"), header=TRUE)
+
+# Data set without the "time" feature
+drop <- c("time")
+heart_notime = heart.uci[,!(names(heart.uci) %in% drop)]
+heart_notime
+```
+```{r}
+# Bio-statistics
+# Chi-squared Test and Pearson Correlation Coefficient
+features = heart_notime[,!(names(heart_notime) %in% c("DEATH_EVENT"))]
+
+chi_squared = c() 
+pearson_corr = c()
+mann_whitney = c()
+
+for (feature in colnames(features)){
+  # Chi-Squared Test
+  chi = chisq.test(features[feature], heart_notime$DEATH_EVENT, correct=FALSE)
+  chi_squared = append(chi_squared, chi$p.value)
+  
+  # Pearson Correlation Coefficient
+  p_corr <- cor(features[feature], heart_notime$DEATH_EVENT, method = 'pearson')
+  pearson_corr = append(pearson_corr, abs(p_corr))
+  
+  # Mann-Whitney U Test
+  mwu <- wilcox.test(unlist(features[feature]) ~ heart_notime$DEATH_EVENT, data=heart_notime, na.rm=TRUE, paired=FALSE, exact=FALSE, conf.int=TRUE)
+  mann_whitney = append(mann_whitney, mwu$p.value)
+}
+
+chi_squared
+pearson_corr
+mann_whitney
+
+# Shapiro-Wilk Test
+shapiro <- lapply(heart_notime, shapiro.test)
+p_shapiro <- sapply(shapiro, `[`, c("p.value"))
+sort_shap <- sort(unlist(p_shapiro))
+sort_shap
+```
+```{r}
+#set.seed(1)
+results_df <- data.frame(mcc=numeric(0), f1=numeric(0), accuracy=numeric(0), tp_rate=numeric(0), tn_rate=numeric(0), prc_auc=numeric(0), roc_auc=numeric(0))
+colnames(results_df) = c("MCC", "F1 score", "accuracy", "TP rate", "TN rate", "PR AUC", "ROC AUC")
+
+#KNN
+for(i in 1:100) {
+  # Splitting into train and test
+  split = createDataPartition(heart_notime$DEATH_EVENT, p=0.8, list=FALSE)
+  train_data = heart_notime[split,]
+  #data.frame(matrix(unlist(heart_notime[split,]), nrow=length(heart_notime[split,]), byrow=TRUE))
+  test_data = heart_notime[-split,]
+  
+  # Splitting into X and Y
+  y <- c("DEATH_EVENT")
+  x_train = train_data[,!(names(train_data) %in% y)]
+  x_test = test_data[,!(names(test_data) %in% y)]
+  
+  y_train = unlist(train_data[y])
+  y_test = unlist(test_data[y])
+  
+  trControl <- trainControl(method  = "cv",
+                            number  = 5)
+  train_data
+  train_data$DEATH_EVENT = as.factor(train_data$DEATH_EVENT)
+  knn_model <- train(DEATH_EVENT ~ .,
+               method     = "knn",
+               tuneGrid   = expand.grid(k = 1:15),
+               trControl  = trControl,
+               data       = train_data)
+  y_pred <- predict(knn_model, newdata = x_test)
+  
+  rate = rates1(y_pred, as.factor(test_data$DEATH_EVENT))
+  my_df = data.frame(rate)
+  colnames(my_df) = c("MCC", "F1 score", "accuracy", "TP rate", "TN rate", "PR AUC", "ROC AUC")
+  results_df = rbind(results_df, my_df)
+}
+```
+
+
+```{r}
+knn_model
+means <-sapply(results_df,FUN=mean)
+means
+```
+```{r}
+#Normalization Function
+min_max_norm <- function(x) {
+    (x - min(x)) / (max(x) - min(x))
+  }
+```
+
+
+```{r}
+#K-Means
+#Picking the top 2 features
+top_feat <- c("ejection_fraction", "serum_creatinine")
+heart_top = heart.uci[,(names(heart.uci) %in% top_feat)]
+#Normalizing features
+heart_top_norm <- as.data.frame(lapply(heart_top, min_max_norm))
+
+#Pair Plot
+plot(unlist(heart_top_norm["ejection_fraction"]), unlist(heart_top_norm["serum_creatinine"]))
+pairs(heart_notime)
+
+#Top 2 features plot with DEATH_EVENT markings
+heart.uci %>% ggplot(aes(unlist(heart_top_norm["ejection_fraction"]), unlist(heart_top_norm["serum_creatinine"]), color= DEATH_EVENT))+
+geom_point()
+
+#K-Means for 100 iterations
+set.seed(123)
+# function to compute total within-cluster sum of square 
+wss <- function(k) {
+  kmeans(heart_top_norm, k, nstart = 10 ,iter.max = 100)$tot.withinss
+}
+
+# Compute and plot wss for k = 1 to k = 15
+k.values <- 1:15
+
+# extract wss for 2-15 clusters
+wss_values <- map_dbl(k.values, wss)
+
+plot(k.values, wss_values,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters K",
+       ylab="Total within-clusters sum of squares")
+
+wss_values
+
+km <- kmeans(heart_top_norm, 5, nstart = 10 ,iter.max = 100)
+fviz_cluster(km, geom = "point", data = heart_top_norm)
+
+# Relabel the data with the cluster number
+pred_label <- rep(0, length(heart_notime$DEATH_EVENT))
+heart_cluster = km$cluster
+for (i in 1:length(heart_notime$DEATH_EVENT)){
+  if (heart_cluster[i] == 1){
+    pred_label[i] = 1
+  } else {
+    pred_label[i] = 0
+  }
+}
+# Second, calculate the accuracy score
+mean(pred_label == heart_notime$DEATH_EVENT)
+```

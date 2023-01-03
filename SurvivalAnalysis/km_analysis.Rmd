@@ -1,0 +1,103 @@
+---
+title: "KM Analysis"
+author: "GMJ"
+date: "2022-12-11"
+output: html_document
+---
+
+```{r}
+library(survival)
+library(ggplot2)
+library(ggfortify)
+```
+
+```{r}
+df = read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/00519/heart_failure_clinical_records_dataset.csv"))
+df
+```
+
+```{r}
+km = with(df, Surv(time, DEATH_EVENT))
+head(km, 80)
+```
+
+```{r}
+km_fit = survfit(Surv(time, DEATH_EVENT) ~ 1, data = df)
+sum = summary(km_fit, times = c(1,30,60,90,120,150,180,210,240, 280)) #*(1:10)))
+sum
+```
+
+```{r}
+out = capture.output(sum)
+out_df = as.data.frame(out)
+out_df
+```
+
+
+```{r}
+write.csv(out_df,"km_summary.csv")
+```
+
+
+
+```{r}
+#pdf(file="km_surv_time.pdf")
+png(file="km_surv_time.png")
+autoplot(km_fit, xlab = "Days", ylab = "Probability of Survival")
+```
+
+```{r}
+km_fit_ej = survfit(Surv(time, DEATH_EVENT) ~ df$ejection_fraction, data = df)
+ggsurvplot(km_fit_ej,data=df ,xlab="Days", ggtheme=theme_minimal())
+#autoplot(km_fit_ej)
+```
+
+```{r}
+vet_ej <- mutate(df, ej = ifelse((ejection_fraction >= 41 & ejection_fraction <= 75), "Normal", "Abnormal"),
+              ej = factor(ej))
+              
+
+km_fit_ej <- survfit(Surv(time, DEATH_EVENT) ~ ej, data=vet_ej)
+#pdf(file="km_ejection_fraction.pdf")
+png(file="km_ejection_fraction.png")
+autoplot(km_fit_ej, main = "Ejection Fraction", xlab = "Days", ylab = "Probability of Survival") #AMerican Heart Asso
+
+```
+
+
+```{r}
+vet_sc <- mutate(df, sc = ifelse((serum_creatinine < 1.35 & serum_creatinine > 0.74 & sex==1) |(serum_creatinine < 1.04 & serum_creatinine > 0.59 & sex==0) , "Normal", "Abnormal"),
+              sc = factor(sc))
+              
+
+km_fit_sc <- survfit(Surv(time, DEATH_EVENT) ~ sc, data=vet_sc)
+#pdf(file="km_serum_creatinine.pdf")
+png(file="km_serum_creatinine.png")
+autoplot(km_fit_sc, main = "Serum Creatinine", xlab = "Days", ylab = "Probability of Survival") #AMerican Heart Asso
+```
+
+
+```{r}
+vet_age <- mutate(df, AG = ifelse((age < 60), "Younger than 60", "60 or Older"),
+              AG = factor(AG))
+              
+
+km_fit_age <- survfit(Surv(time, DEATH_EVENT) ~ AG, data=vet_age)
+#pdf(file="km_age.pdf")
+png(file="km_age.png")
+autoplot(km_fit_age, main = "Age", xlab = "Days", ylab = "Probability of Survival")
+```
+
+
+```{r}
+#pdf(file="saving_plot4.pdf")
+vet_diabetes <- mutate(df, dib = ifelse((diabetes == 1), "Yes", "No"),
+              dib = factor(dib))
+              
+
+km_fit_d <- survfit(Surv(time, DEATH_EVENT) ~ dib, data=vet_diabetes)
+#pdf(file="km_diabetes.pdf")
+png(file="km_diabetes.png")
+autoplot(km_fit_d, main = "Diabetes", xlab = "Days", ylab = "Probability of Survival")
+```
+

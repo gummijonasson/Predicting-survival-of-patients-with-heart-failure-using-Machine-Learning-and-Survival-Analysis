@@ -1,0 +1,63 @@
+---
+title: "Linear Regression Classifier on all features"
+output: html_document
+---
+
+```{r}
+library(caret)
+library(rpart)
+library(e1071)
+library(randomForest)
+library(PRROC)
+library(MLmetrics)
+```
+
+```{r}
+df = read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/00519/heart_failure_clinical_records_dataset.csv"))
+
+df = subset(df, select = -c(time))
+```
+
+
+```{r}
+results_df <- data.frame(mcc=numeric(0), f1=numeric(0), accuracy=numeric(0), tp_rate=numeric(0), tn_rate=numeric(0), prc_auc=numeric(0), roc_auc=numeric(0))
+colnames(results_df) = c("MCC", "F1 score", "accuracy", "TP rate", "TN rate", "PR AUC", "ROC AUC")
+
+n = 100
+
+for(i in 1:n) {
+
+  split <- createDataPartition(df$DEATH_EVENT, p = 0.8, list = FALSE)
+  train_data <- df[split, ]
+  test_data <- df[-split, ]
+  
+  model <- lm(DEATH_EVENT ~ ., data=train_data)
+
+    # make predictions on the test set
+  predictions <- predict(model, test_data, type = "response")
+  
+  predictions = ifelse(predictions >0.5, 1, 0)
+
+  
+  rate = rates1(as.factor(predictions), factor(test_data$DEATH_EVENT))
+  
+
+  my_df = data.frame(rate)
+  colnames(my_df) = c("MCC", "F1 score", "accuracy", "TP rate", "TN rate", "PR AUC", "ROC AUC")
+  #colnames(results_df) = colnames(my_df)
+  
+  results_df = rbind(results_df, my_df)
+}
+print(results_df)
+stat = stat.desc(results_df)
+final_result = (stat)[c("median", "mean"),]
+final_result
+```
+
+```{r}
+write.csv(final_result, "lin_reg_classifier_all_features_results.csv")
+```
+
+```{r}
+write.csv(results_df, "lin_reg_classifier_all_features_results_log.csv")
+```
